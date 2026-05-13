@@ -44,16 +44,38 @@ function createServer() {
 const app = express();
 app.use(express.json({ limit: "10mb" }));
 
+const transports = new Map();
+
 app.post("/mcp", async (req, res) => {
-  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => crypto.randomUUID() });
-  const server = createServer();
-  await server.connect(transport);
+  const sessionId = req.headers["mcp-session-id"];
+  let transport = sessionId ? transports.get(sessionId) : undefined;
+
+  if (!transport) {
+    transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => crypto.randomUUID(),
+      onsessioninitialized: (sid) => { transports.set(sid, transport); },
+    });
+    transport.onclose = () => { if (transport.sessionId) transports.delete(transport.sessionId); };
+    const server = createServer();
+    await server.connect(transport);
+  }
+
   await transport.handleRequest(req, res, req.body);
-  res.on("close", () => { server.close(); });
 });
 
-app.get("/mcp", (_, res) => res.status(405).json({ jsonrpc: "2.0", error: { code: -32000, message: "Method Not Allowed" }, id: null }));
-app.delete("/mcp", (_, res) => res.status(405).json({ jsonrpc: "2.0", error: { code: -32000, message: "Method Not Allowed" }, id: null }));
+app.get("/mcp", async (req, res) => {
+  const sessionId = req.headers["mcp-session-id"];
+  const transport = sessionId ? transports.get(sessionId) : undefined;
+  if (!transport) return res.status(405).json({ jsonrpc: "2.0", error: { code: -32000, message: "Method Not Allowed" }, id: null });
+  await transport.handleRequest(req, res);
+});
+
+app.delete("/mcp", async (req, res) => {
+  const sessionId = req.headers["mcp-session-id"];
+  const transport = sessionId ? transports.get(sessionId) : undefined;
+  if (!transport) return res.status(404).end();
+  await transport.handleRequest(req, res);
+});
 
 app.get("/health", (_, res) => res.json({ status: "ok", server: "rorr-infra-mcp" }));
 
