@@ -7,6 +7,7 @@ import crypto from "crypto";
 import { fileURLToPath } from "url";
 
 import { registerCreatePr } from "./tools/createPr.js";
+import { registerAwsDescribe } from "./tools/awsDescribe.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -37,6 +38,7 @@ function createServer() {
 
   // Tools
   registerCreatePr(server);
+  registerAwsDescribe(server);
 
   return server;
 }
