@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "rorr-infra-local": {
+      "type": "http",
+      "url": "http://localhost:5010/mcp",
+      "timeout": 600000,
+      "headers": {
+        "x-user-id": "woody@rorr.club"
+      }
+    },
+    "rorr-infra": {
+      "type": "http",
+      "url": "http://mcp-agents-staging-alb-249976027.us-east-1.elb.amazonaws.com:5010/mcp",
+      "timeout": 600000,
+      "headers": {
+        "x-user-id": "woody@rorr.club"
+      }
+    }
+  }
+}
