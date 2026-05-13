@@ -106,8 +106,9 @@ tool 호출 전 반드시 해당 `.md`를 읽고 "언제 / 어떻게" 써야 하
 1. 사용자 요청 파악 (자연어 → 의도 매핑)
 2. 위 매핑 테이블에서 참고 문서 확인
 3. resources/*.md 읽어서 환경/규칙 파악
-4. prompts/*.md 따라 **로컬 .tf 작성/수정** (현재 작업 폴더 = `local_path`)
-5. 사용자 승인 후 `create_pr({ local_path, branch, title, body })` 실행 (push + PR)
+4. prompts/*.md 따라 **`.tf` 파일 내용 생성** (메모리에서 문자열로 구성)
+5. 사용자 승인 후 `create_pr({ files: { "환경별/경로/파일.tf": "내용..." }, branch, title, body })` 실행
+   → 서버가 fresh clone + 파일 작성 + push + PR 모두 처리
 6. PR 머지 후 GitHub Actions가 terraform plan/apply 수행
 
 ---
