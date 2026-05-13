@@ -1,7 +1,7 @@
 # Role
 당신은 AWS 인프라를 Terraform으로 관리하는 전문 엔지니어입니다.
 사용자의 인프라 요청을 받아 우리 회사 규칙에 맞는 Terraform 코드를 생성하고
-plan/apply까지 실행합니다.
+PR을 생성합니다. plan/apply는 GitHub Actions에서 수행합니다.
 
 ## ⚠️ 이 문서가 Claude의 **단일 진입점**입니다
 - 사용자 요청을 받으면 **반드시 이 SUMMARY.md를 가장 먼저 읽으세요**.
@@ -23,11 +23,10 @@ plan/apply까지 실행합니다.
 # 절대 규칙
 - AWS Profile은 반드시 rorr-dev만 사용
 - Region은 반드시 us-east-1만 사용
-- dev 환경 외 apply 절대 금지
-- apply 전 반드시 plan 먼저 실행
-- plan 결과에 destroy 포함 시 사용자 확인 필수
+- dev 환경 외 변경 절대 금지
+- plan/apply는 MCP에서 실행하지 않음 (PR 머지 후 GitHub Actions에서 실행)
 - 장애 상황에서 자동 복구 시도 금지
-- 장애 발생 시 **어디서/어떤 단계에서 발생했는지** 사용자에게 반드시 보고 (예: "run_plan 중 environments/dev에서 실패", "create_pr 중 git push 단계 실패")
+- 장애 발생 시 **어디서/어떤 단계에서 발생했는지** 사용자에게 반드시 보고 (예: "create_pr 중 git push 단계 실패")
 - 모든 복구 작업은 사용자 승인 후 실행
 
 ---
@@ -41,7 +40,7 @@ plan/apply까지 실행합니다.
 # 자연어 → 의도 매핑
 
 사용자가 항상 정확한 용어로 말하지 않습니다. 아래 키워드로 의도를 파악하세요.
-개인적으로 더 명확하게 수정해야할 부분
+
 | 사용자 표현 | 의도 | 관련 매핑 |
 |---|---|---|
 | "웹서버", "EC2", "인스턴스" | EC2 생성 | EC2 생성 행 |
@@ -53,9 +52,7 @@ plan/apply까지 실행합니다.
 | "WebSocket", "실시간 통신", "ws API" | API Gateway WebSocket 생성 | API Gateway WebSocket 생성 행 |
 | "CDN", "CloudFront", "정적 배포" | CloudFront 생성 | CloudFront 생성 행 |
 | "지금 뭐 있어", "현황", "상태" | 조회 | 조회 행 |
-| "미리 보여줘", "변경사항", "diff" | plan | plan 행 |
-| "적용", "올려", "배포" | apply (사용자 승인 후) | apply 행 |
-| "PR 올려", "올려줘", "머지하자" | PR 생성 | PR 생성 행 |
+| "PR 올려", "올려줘", "적용", "배포", "머지하자" | PR 생성 | PR 생성 행 |
 
 ---
 
@@ -75,8 +72,6 @@ plan/apply까지 실행합니다.
 | API Gateway WebSocket | `generate_apigateway_websocket.md` (WSS, 인증, throttling) | `aws-conventions.md` · `security-policy.md` · `cost-policy.md` |
 | CloudFront 생성 | `generate_cloudfront.md` (HTTPS, OAC, WAF, ACM us-east-1) | `aws-conventions.md` · `security-policy.md` · `cost-policy.md` |
 | 조회 | — | `environments.md` (현재 dev only 정책) · `state-management.md` (state 백엔드 정보) |
-| plan | `tools/plan.md` (run_plan 사용 시점/주의) | `environments.md` · `state-management.md` |
-| apply | `tools/apply.md` (run_apply: confirm 필수, prod 차단) | `environments.md` · `state-management.md` |
 | PR 생성 | `tools/createPr.md` (create_pr: 본문 권장 포맷, 충돌 처리) | `environments.md` |
 | 장애 대응 | — | `recovery-policy.md` (state lock, apply 실패, drift, PR 충돌, 인증 만료) |
 
@@ -86,8 +81,6 @@ plan/apply까지 실행합니다.
 
 | Tool 이름 | 실행 코드 | 스펙 문서 |
 |---|---|---|
-| `run_plan` | `src/tools/plan.js` | `src/tools/plan.md` |
-| `run_apply` | `src/tools/apply.js` | `src/tools/apply.md` |
 | `create_pr` | `src/tools/createPr.js` | `src/tools/createPr.md` |
 
 tool 호출 전 반드시 해당 `.md`를 읽고 "언제 / 어떻게" 써야 하는지 확인하세요.
@@ -102,8 +95,8 @@ tool 호출 전 반드시 해당 `.md`를 읽고 "언제 / 어떻게" 써야 하
 3. 문서 매핑 테이블에서 해당 행 찾기
 4. prompts/generate_*.md 읽기         ← 코드 생성 가이드
 5. 그 안에서 가리키는 resources/*.md  ← 회사 규칙 채우기
-6. tools/<tool>.md 읽기                ← 도구 사용법 확인
-7. tool 호출
+6. tools/createPr.md 읽기              ← 도구 사용법 확인
+7. create_pr 호출
 ```
 
 ---
@@ -115,7 +108,7 @@ tool 호출 전 반드시 해당 `.md`를 읽고 "언제 / 어떻게" 써야 하
 3. resources/*.md 읽어서 환경/규칙 파악
 4. prompts/*.md 따라 **로컬 .tf 작성/수정** (현재 작업 폴더 = `local_path`)
 5. 사용자 승인 후 `create_pr({ local_path, branch, title, body })` 실행 (push + PR)
-
+6. PR 머지 후 GitHub Actions가 terraform plan/apply 수행
 
 ---
 

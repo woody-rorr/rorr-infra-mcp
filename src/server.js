@@ -6,8 +6,6 @@ import path from "path";
 import crypto from "crypto";
 import { fileURLToPath } from "url";
 
-import { registerPlan } from "./tools/plan.js";
-import { registerApply } from "./tools/apply.js";
 import { registerCreatePr } from "./tools/createPr.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -38,8 +36,6 @@ function createServer() {
   }
 
   // Tools
-  registerPlan(server);
-  registerApply(server);
   registerCreatePr(server);
 
   return server;
