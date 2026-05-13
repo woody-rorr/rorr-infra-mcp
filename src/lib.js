@@ -13,7 +13,7 @@ export function parseRepoUrl(url) {
 }
 
 export async function withTerraformRepo(fn) {
-  const repoUrl = process.env.GITHUB_REPO_URL;
+  const repoUrl = process.env.TERRAFORM_GITHUB_REPO_URL;
   const token = process.env.GITHUB_TOKEN;
   const baseBranch = process.env.BASE_BRANCH || "main";
   if (!repoUrl) throw new Error("GITHUB_REPO_URL 미설정");

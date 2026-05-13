@@ -15,8 +15,8 @@ on:
       - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
-env:
-  AWS_REGION: us-east-1
+env: # env파일로 빼기
+  AWS_REGION: us-east-1 
   ECR_REPO: rorr-mcp-infra
   ECR_REGISTRY: 239460481239.dkr.ecr.us-east-1.amazonaws.com
   CLUSTER: mcp-agents-staging-cluster
@@ -25,6 +25,9 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: http://mcp-agents-staging-alb-249976027.us-east-1.elb.amazonaws.com:5010/health
     permissions:
       id-token: write
       contents: read

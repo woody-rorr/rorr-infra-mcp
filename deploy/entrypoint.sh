@@ -21,6 +21,6 @@ fi
 TOKEN=$(aws ssm get-parameter --name "$SSM_GH_TOKEN" --with-decryption --region "$REGION" --query 'Parameter.Value' --output text 2>/dev/null || true)
 REPO=$(aws ssm get-parameter --name "$SSM_GH_REPO" --region "$REGION" --query 'Parameter.Value' --output text 2>/dev/null || true)
 [ -n "$TOKEN" ] && export GITHUB_TOKEN="$TOKEN" && echo "[entrypoint] GITHUB_TOKEN injected."
-[ -n "$REPO" ] && export GITHUB_REPO_URL="$REPO" && echo "[entrypoint] GITHUB_REPO_URL=$REPO"
+[ -n "$REPO" ] && export TERRAFORM_GITHUB_REPO_URL="$REPO" && echo "[entrypoint] TERRAFORM_GITHUB_REPO_URL=$REPO"
 
 exec node /app/src/server.js

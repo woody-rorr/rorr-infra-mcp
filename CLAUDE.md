@@ -70,7 +70,7 @@ aws ecs update-service \
 | `PORT` | `5010` |
 | `AWS_REGION` | `us-east-1` |
 | `BASE_BRANCH` | `main` |
-| `GITHUB_REPO_URL` | `rorr-infra-terraform` 레포 URL |
+| `TERRAFORM_GITHUB_REPO_URL` | `rorr-infra-terraform` 레포 URL |
 | `GITHUB_TOKEN` | GitHub PAT (PR 생성용) |
 
 ## MCP 접속 URL

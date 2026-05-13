@@ -114,9 +114,8 @@ tool 호출 전 반드시 해당 `.md`를 읽고 "언제 / 어떻게" 써야 하
 2. 위 매핑 테이블에서 참고 문서 확인
 3. resources/*.md 읽어서 환경/규칙 파악
 4. prompts/*.md 따라 **로컬 .tf 작성/수정** (현재 작업 폴더 = `local_path`)
-5. `run_plan({ environment, local_path })` 실행 → **로컬 변경사항 반영된 plan** 결과 보여주기
-6. 사용자 승인 후 `create_pr({ local_path, branch, title, body })` 실행 (push + PR)
-7. 사용자 최종 승인 후 `run_apply` 실행 (dev/staging만)
+5. 사용자 승인 후 `create_pr({ local_path, branch, title, body })` 실행 (push + PR)
+
 
 ---
 

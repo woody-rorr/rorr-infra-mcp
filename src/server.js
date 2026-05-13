@@ -56,6 +56,9 @@ app.post("/mcp", async (req, res) => {
   res.on("close", () => { server.close(); });
 });
 
+app.get("/mcp", (_, res) => res.status(405).json({ jsonrpc: "2.0", error: { code: -32000, message: "Method Not Allowed" }, id: null }));
+app.delete("/mcp", (_, res) => res.status(405).json({ jsonrpc: "2.0", error: { code: -32000, message: "Method Not Allowed" }, id: null }));
+
 app.get("/health", (_, res) => res.json({ status: "ok", server: "rorr-infra-mcp" }));
 
 app.listen(PORT, () => process.stdout.write(`rorr-infra-mcp running on :${PORT}\n`));

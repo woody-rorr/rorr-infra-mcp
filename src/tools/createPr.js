@@ -17,10 +17,10 @@ export function registerCreatePr(server) {
     },
     async ({ local_path, branch, title, body }) => {
       const token = process.env.GITHUB_TOKEN;
-      const repoUrl = process.env.GITHUB_REPO_URL;
+      const repoUrl = process.env.TERRAFORM_GITHUB_REPO_URL;
       const baseBranch = process.env.BASE_BRANCH || "main";
       if (!token || !repoUrl) {
-        return { content: [{ type: "text", text: "Error: GITHUB_TOKEN / GITHUB_REPO_URL 미설정" }] };
+        return { content: [{ type: "text", text: "Error: GITHUB_TOKEN / TERRAFORM_GITHUB_REPO_URL 미설정" }] };
       }
       const { owner, repo } = parseRepoUrl(repoUrl);
 
