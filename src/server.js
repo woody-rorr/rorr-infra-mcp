@@ -8,6 +8,7 @@ import { fileURLToPath } from "url";
 
 import { registerCreatePr } from "./tools/createPr.js";
 import { registerAwsDescribe } from "./tools/awsDescribe.js";
+import { registerHandleInfraRequest } from "./tools/handleInfraRequest.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -39,6 +40,7 @@ function createServer() {
   // Tools
   registerCreatePr(server);
   registerAwsDescribe(server);
+  registerHandleInfraRequest(server);
 
   return server;
 }
