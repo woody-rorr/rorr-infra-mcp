@@ -7,8 +7,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && apt-get update && apt-get install -y --no-install-recommends terraform \
   && rm -rf /var/lib/apt/lists/*
 
-RUN npm install -g @anthropic-ai/claude-code
-
 WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm install --omit=dev
@@ -18,8 +16,8 @@ COPY src ./src
 COPY prompts ./prompts
 COPY resources ./resources
 
-COPY deploy/entrypoint.sh deploy/ecs-backup-auth.sh ./
-RUN chmod +x entrypoint.sh ecs-backup-auth.sh
+COPY deploy/entrypoint.sh ./
+RUN chmod +x entrypoint.sh
 
 EXPOSE 5010
 ENTRYPOINT []
