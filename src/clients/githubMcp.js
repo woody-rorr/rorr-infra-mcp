@@ -7,18 +7,18 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const UPSTREAM_PATH = path.resolve(__dirname, "../../mcp-upstream.json");
+const MCP_CONFIG_PATH = path.resolve(__dirname, "../../.mcp.json");
 
-function readUpstreamUrl(name = "github") {
+function readMcpUrl(name = "github") {
   try {
-    const cfg = JSON.parse(fs.readFileSync(UPSTREAM_PATH, "utf8"));
+    const cfg = JSON.parse(fs.readFileSync(MCP_CONFIG_PATH, "utf8"));
     return cfg.mcpServers?.[name]?.url ?? null;
   } catch {
     return null;
   }
 }
 
-const GITHUB_MCP_URL = process.env.GITHUB_MCP_URL || readUpstreamUrl("github") || "https://api.githubcopilot.com/mcp/";
+const GITHUB_MCP_URL = process.env.GITHUB_MCP_URL || readMcpUrl("github") || "https://api.githubcopilot.com/mcp/";
 
 let _state = null; // { client, tools }
 

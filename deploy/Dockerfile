@@ -15,7 +15,7 @@ RUN npm install --omit=dev
 COPY src ./src
 COPY prompts ./prompts
 COPY resources ./resources
-COPY mcp-upstream.json ./
+COPY .mcp.json ./
 
 COPY deploy/entrypoint.sh ./
 RUN chmod +x entrypoint.sh
