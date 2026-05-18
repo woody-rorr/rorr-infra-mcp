@@ -7,11 +7,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && apt-get update && apt-get install -y --no-install-recommends terraform \
   && rm -rf /var/lib/apt/lists/*
 
+# Claude Code CLI (SSM OAuth로 인증)
+RUN npm install -g @anthropic-ai/claude-code
+
 WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm install --omit=dev
 
-# .md 컨텍스트 + 서버 코드 + upstream MCP 설정
+# .md 컨텍스트 + 서버 코드 + outbound MCP 설정
 COPY src ./src
 COPY prompts ./prompts
 COPY resources ./resources

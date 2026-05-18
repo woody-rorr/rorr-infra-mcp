@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
 import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -7,15 +6,12 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import { withTerraformRepo } from "../lib.js";
 import { getGithubMcp, callGithubTool } from "../clients/githubMcp.js";
+import { runClaude } from "../clients/claudeCli.js";
 
 const execAsync = promisify(exec);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "../..");
 
-const bedrock = new BedrockRuntimeClient({ region: process.env.AWS_REGION || "us-east-1" });
-const MODEL = process.env.INFRA_LLM_MODEL || process.env.LLM_MODEL || "us.anthropic.claude-opus-4-5-20251101-v1:0";
-
-// 기본은 GitHub MCP 사용. 환경변수로 폴백 강제 가능.
 const DEFAULT_USE_GITHUB_MCP = process.env.PR_VIA_GITHUB_MCP !== "false";
 
 let _systemPromptCache = null;
@@ -58,21 +54,8 @@ async function buildSystemPrompt() {
 }
 
 async function callLLM(system, userMessage) {
-  const body = {
-    anthropic_version: "bedrock-2023-05-31",
-    max_tokens: 8192,
-    system,
-    messages: [{ role: "user", content: userMessage }],
-  };
-  const res = await bedrock.send(new InvokeModelCommand({
-    modelId: MODEL,
-    contentType: "application/json",
-    accept: "application/json",
-    body: JSON.stringify(body),
-  }));
-  const json = JSON.parse(new TextDecoder().decode(res.body));
-  const text = (json.content ?? []).filter((c) => c.type === "text").map((c) => c.text).join("\n").trim();
-  if (!text) throw new Error("Empty LLM response");
+  const text = await runClaude({ system, user: userMessage });
+  if (!text) throw new Error("Empty Claude response");
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
   if (start === -1 || end === -1) throw new Error("No JSON in response: " + text.slice(0, 300));
@@ -87,7 +70,6 @@ function parseRepoUrl() {
   return { owner: m[1], repo: m[2].replace(/\.git$/, ""), baseBranch: process.env.BASE_BRANCH || "main" };
 }
 
-// 기본 경로: GitHub MCP로 PR 생성 (확장 가능 — 향후 사용자 토큰 전파)
 async function createPrViaGithubMcp(plan, userToken = null) {
   const { client } = await getGithubMcp({ userToken });
   if (!client) return null;
@@ -114,7 +96,6 @@ async function createPrViaGithubMcp(plan, userToken = null) {
   return urlMatch ? urlMatch[0] : txt.slice(0, 300);
 }
 
-// 폴백 경로: 로컬 git (GitHub MCP 실패 시)
 async function createPrViaLocalGit(plan) {
   return await withTerraformRepo(async ({ tmpDir, owner, repo, token, baseBranch }) => {
     await execAsync(`git checkout -b ${plan.branch}`, { cwd: tmpDir });
@@ -145,10 +126,10 @@ async function createPrViaLocalGit(plan) {
 export function registerHandleInfraRequest(server) {
   server.tool(
     "handle_infra_request",
-    "자연어 인프라 요청을 받아 회사 규칙에 맞는 Terraform 코드 생성 + GitHub PR까지 자체 처리. 기본 경로는 GitHub MCP, 실패 시 로컬 git 폴백.",
+    "자연어 인프라 요청을 받아 회사 규칙에 맞는 Terraform 코드 생성 + GitHub PR까지 자체 처리. LLM은 Claude OAuth(CLI), PR은 GitHub MCP 우선.",
     {
       user_message: z.string().describe("자연어 인프라 요청. 예: 'dev에 S3 버킷 만들어줘'"),
-      user_token: z.string().optional().describe("사용자별 GitHub OAuth 토큰 (향후 GitHub OAuth 도입 시). 없으면 봇 토큰 사용."),
+      user_token: z.string().optional().describe("사용자별 GitHub OAuth 토큰. 없으면 봇 토큰 사용."),
     },
     async ({ user_message, user_token }) => {
       try {
