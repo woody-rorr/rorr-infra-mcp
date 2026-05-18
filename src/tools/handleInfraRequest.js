@@ -15,16 +15,15 @@ const ROOT = path.resolve(__dirname, "../..");
 const bedrock = new BedrockRuntimeClient({ region: process.env.AWS_REGION || "us-east-1" });
 const MODEL = process.env.INFRA_LLM_MODEL || process.env.LLM_MODEL || "us.anthropic.claude-opus-4-5-20251101-v1:0";
 
+// 기본은 GitHub MCP 사용. 환경변수로 폴백 강제 가능.
+const DEFAULT_USE_GITHUB_MCP = process.env.PR_VIA_GITHUB_MCP !== "false";
+
 let _systemPromptCache = null;
 async function buildSystemPrompt() {
   if (_systemPromptCache) return _systemPromptCache;
   const sections = [
     "# Role",
     "당신은 rorr의 AWS 인프라 전문 에이전트입니다. 사용자의 자연어 인프라 요청을 받아 회사 규칙에 맞는 Terraform 코드를 생성합니다.",
-    "",
-    "## 동작 모드",
-    "- 기본은 'plan-only' 모드: Terraform 코드를 JSON으로 반환하고 호출자가 자체 git/PR 처리.",
-    "- 단, GitHub MCP tool이 활성이면 그것을 활용해 직접 PR을 만들 수도 있음.",
     "",
     "## 출력 형식 (반드시 JSON만, 다른 설명 금지)",
     "```json",
@@ -80,42 +79,42 @@ async function callLLM(system, userMessage) {
   return JSON.parse(text.slice(start, end + 1));
 }
 
-// GitHub MCP가 활성이면 그쪽으로, 아니면 로컬 git/octokit으로 폴백.
-async function createPrViaGithubMcp(plan) {
-  const { client } = await getGithubMcp();
-  if (!client) return null;
-
+function parseRepoUrl() {
   const repoUrl = process.env.TERRAFORM_GITHUB_REPO_URL;
   if (!repoUrl) throw new Error("TERRAFORM_GITHUB_REPO_URL 미설정");
   const m = repoUrl.match(/github\.com[/:]([^/]+)\/([^/.]+)/);
   if (!m) throw new Error(`Cannot parse repo url: ${repoUrl}`);
-  const owner = m[1], repo = m[2].replace(/\.git$/, "");
-  const baseBranch = process.env.BASE_BRANCH || "main";
+  return { owner: m[1], repo: m[2].replace(/\.git$/, ""), baseBranch: process.env.BASE_BRANCH || "main" };
+}
 
-  // 1) 브랜치 생성 (base 브랜치 지정하면 GitHub MCP가 자체적으로 base SHA 조회)
-  await callGithubTool("create_branch", { owner, repo, branch: plan.branch, sha_from: baseBranch });
+// 기본 경로: GitHub MCP로 PR 생성 (확장 가능 — 향후 사용자 토큰 전파)
+async function createPrViaGithubMcp(plan, userToken = null) {
+  const { client } = await getGithubMcp({ userToken });
+  if (!client) return null;
+  const { owner, repo, baseBranch } = parseRepoUrl();
 
-  // 3) 파일 push (push_files = 단일 커밋에 다수 파일)
+  await callGithubTool("create_branch", { owner, repo, branch: plan.branch, sha_from: baseBranch }, { userToken });
+
   await callGithubTool("push_files", {
     owner, repo, branch: plan.branch,
-    files: Object.entries(plan.files).map(([path, content]) => ({ path, content })),
+    files: Object.entries(plan.files).map(([p, content]) => ({ path: p, content })),
     message: plan.title,
-  });
+  }, { userToken });
 
-  // 4) PR 생성
   const pr = await callGithubTool("create_pull_request", {
     owner, repo,
     title: plan.title,
     body: plan.body ?? "",
     head: plan.branch,
     base: baseBranch,
-  });
-  // pr.content[0].text 또는 구조화된 응답에서 url 추출
+  }, { userToken });
+
   const txt = (pr.content ?? []).map(c => c.text).join("\n");
   const urlMatch = txt.match(/https:\/\/github\.com\/[^\s"]+\/pull\/\d+/);
-  return urlMatch ? urlMatch[0] : `${txt.slice(0, 300)}`;
+  return urlMatch ? urlMatch[0] : txt.slice(0, 300);
 }
 
+// 폴백 경로: 로컬 git (GitHub MCP 실패 시)
 async function createPrViaLocalGit(plan) {
   return await withTerraformRepo(async ({ tmpDir, owner, repo, token, baseBranch }) => {
     await execAsync(`git checkout -b ${plan.branch}`, { cwd: tmpDir });
@@ -146,12 +145,12 @@ async function createPrViaLocalGit(plan) {
 export function registerHandleInfraRequest(server) {
   server.tool(
     "handle_infra_request",
-    "자연어 인프라 요청을 받아 회사 규칙에 맞는 Terraform 코드 생성 + GitHub PR까지 자체 처리.",
+    "자연어 인프라 요청을 받아 회사 규칙에 맞는 Terraform 코드 생성 + GitHub PR까지 자체 처리. 기본 경로는 GitHub MCP, 실패 시 로컬 git 폴백.",
     {
       user_message: z.string().describe("자연어 인프라 요청. 예: 'dev에 S3 버킷 만들어줘'"),
-      use_github_mcp: z.boolean().default(false).describe("true면 GitHub MCP로 PR 생성. false면 로컬 git 사용(기본)."),
+      user_token: z.string().optional().describe("사용자별 GitHub OAuth 토큰 (향후 GitHub OAuth 도입 시). 없으면 봇 토큰 사용."),
     },
-    async ({ user_message, use_github_mcp }) => {
+    async ({ user_message, user_token }) => {
       try {
         const system = await buildSystemPrompt();
         const plan = await callLLM(system, user_message);
@@ -163,20 +162,28 @@ export function registerHandleInfraRequest(server) {
           return { content: [{ type: "text", text: "Error: LLM이 branch/title 누락" }] };
         }
 
-        let url, via;
-        if (use_github_mcp) {
-          url = await createPrViaGithubMcp(plan);
-          via = "github-mcp";
+        let url = null, via = null, errors = [];
+
+        if (DEFAULT_USE_GITHUB_MCP) {
+          try {
+            url = await createPrViaGithubMcp(plan, user_token);
+            via = user_token ? "github-mcp (user token)" : "github-mcp (bot token)";
+          } catch (e) {
+            errors.push(`github-mcp: ${e.message}`);
+          }
         }
+
         if (!url) {
           url = await createPrViaLocalGit(plan);
-          via = "local-git";
+          via = "local-git (fallback)";
         }
+
+        const errorsLine = errors.length ? `\n\n⚠️ 시도 중 발생:\n${errors.map(e => "- " + e).join("\n")}` : "";
 
         return {
           content: [{
             type: "text",
-            text: `✅ PR 생성됨 (via ${via}): ${url}\n\n## 변경 파일\n${Object.keys(plan.files).map(f => "- " + f).join("\n")}\n\n## 본문\n${plan.body ?? "(없음)"}`,
+            text: `✅ PR 생성됨 (${via}): ${url}\n\n## 변경 파일\n${Object.keys(plan.files).map(f => "- " + f).join("\n")}\n\n## 본문\n${plan.body ?? "(없음)"}${errorsLine}`,
           }],
         };
       } catch (e) {
