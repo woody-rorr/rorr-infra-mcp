@@ -11,10 +11,11 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm install --omit=dev
 
-# .md 컨텍스트 + 서버 코드
+# .md 컨텍스트 + 서버 코드 + upstream MCP 설정
 COPY src ./src
 COPY prompts ./prompts
 COPY resources ./resources
+COPY mcp-upstream.json ./
 
 COPY deploy/entrypoint.sh ./
 RUN chmod +x entrypoint.sh

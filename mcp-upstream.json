@@ -1,0 +1,11 @@
+{
+  "comment": "이 infra MCP 서버가 outbound로 호출하는 다른 MCP들. env에서 토큰을 가져와 런타임에 연결.",
+  "mcpServers": {
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "tokenEnv": "GITHUB_MCP_TOKEN",
+      "proxyPrefix": "gh_"
+    }
+  }
+}

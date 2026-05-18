@@ -2,7 +2,23 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
-const GITHUB_MCP_URL = process.env.GITHUB_MCP_URL || "https://api.githubcopilot.com/mcp/";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const UPSTREAM_PATH = path.resolve(__dirname, "../../mcp-upstream.json");
+
+function readUpstreamUrl(name = "github") {
+  try {
+    const cfg = JSON.parse(fs.readFileSync(UPSTREAM_PATH, "utf8"));
+    return cfg.mcpServers?.[name]?.url ?? null;
+  } catch {
+    return null;
+  }
+}
+
+const GITHUB_MCP_URL = process.env.GITHUB_MCP_URL || readUpstreamUrl("github") || "https://api.githubcopilot.com/mcp/";
 
 let _state = null; // { client, tools }
 
