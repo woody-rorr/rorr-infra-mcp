@@ -1,6 +1,7 @@
 // GitHub MCP의 모든 tool을 infra MCP의 tool로 재노출 (proxy).
-// 호출 시 GitHub MCP에 그대로 위임.
+// 호출 시 GitHub MCP에 그대로 위임. 사용자 토큰은 ALS로 자동 전파.
 import { getGithubMcp, callGithubTool } from "../clients/githubMcp.js";
+import { getUserToken } from "../requestContext.js";
 
 export async function registerGithubProxy(server) {
   const { client, tools } = await getGithubMcp();
@@ -17,7 +18,8 @@ export async function registerGithubProxy(server) {
       t.inputSchema?.properties ?? {},
       async (args) => {
         try {
-          const res = await callGithubTool(t.name, args);
+          const userToken = getUserToken();
+          const res = await callGithubTool(t.name, args, { userToken });
           return res;
         } catch (e) {
           return { content: [{ type: "text", text: `Error gh_${t.name}: ${e.message}` }] };

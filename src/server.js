@@ -10,6 +10,7 @@ import { registerCreatePr } from "./tools/createPr.js";
 import { registerAwsDescribe } from "./tools/awsDescribe.js";
 import { registerHandleInfraRequest } from "./tools/handleInfraRequest.js";
 import { registerGithubProxy } from "./tools/githubProxy.js";
+import { requestStorage, extractBearer } from "./requestContext.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -67,7 +68,9 @@ app.post("/mcp", async (req, res) => {
     await server.connect(transport);
   }
 
-  await transport.handleRequest(req, res, req.body);
+  // 요청별 userToken(Authorization 헤더에서 추출)을 ALS로 tool 핸들러까지 전파
+  const userToken = extractBearer(req);
+  await requestStorage.run({ userToken }, () => transport.handleRequest(req, res, req.body));
 });
 
 app.get("/mcp", async (req, res) => {

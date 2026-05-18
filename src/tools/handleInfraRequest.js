@@ -7,6 +7,7 @@ import { promisify } from "util";
 import { withTerraformRepo } from "../lib.js";
 import { getGithubMcp, callGithubTool } from "../clients/githubMcp.js";
 import { runClaude } from "../clients/claudeCli.js";
+import { getUserToken } from "../requestContext.js";
 
 const execAsync = promisify(exec);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -133,6 +134,9 @@ export function registerHandleInfraRequest(server) {
     },
     async ({ user_message, user_token }) => {
       try {
+        // 우선순위: tool 인자 user_token > Authorization 헤더 (ALS) > 봇 토큰(폴백)
+        user_token = user_token || getUserToken();
+
         const system = await buildSystemPrompt();
         const plan = await callLLM(system, user_message);
 
