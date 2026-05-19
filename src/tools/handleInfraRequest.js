@@ -2,42 +2,49 @@ import { z } from "zod";
 import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
-import { exec } from "child_process";
-import { promisify } from "util";
-import { withTerraformRepo } from "../lib.js";
 import { getGithubMcp, callGithubTool } from "../clients/githubMcp.js";
 import { runClaude } from "../clients/claudeCli.js";
 import { getUserToken } from "../requestContext.js";
 
-const execAsync = promisify(exec);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "../..");
-
-const DEFAULT_USE_GITHUB_MCP = process.env.PR_VIA_GITHUB_MCP !== "false";
 
 let _systemPromptCache = null;
 async function buildSystemPrompt() {
   if (_systemPromptCache) return _systemPromptCache;
   const sections = [
-    "# Role",
-    "당신은 rorr의 AWS 인프라 전문 에이전트입니다. 사용자의 자연어 인프라 요청을 받아 회사 규칙에 맞는 Terraform 코드를 생성합니다.",
+    "# 역할",
+    "당신은 **rorr의 AWS Terraform 코드 생성 전문 에이전트**입니다. 자연어 요청을 받아 회사 규칙에 부합하는 Terraform 코드를 JSON 한 덩어리로 반환합니다.",
     "",
-    "## 출력 형식 (반드시 JSON만, 다른 설명 금지)",
-    "```json",
+    "# 절대 규칙 (위반 시 즉시 실패)",
+    "1. **출력은 raw JSON 한 덩어리만**. 백틱/펜스/주석/설명/사과 텍스트 일체 금지.",
+    "2. **dev 환경만**. `environments/dev/` 외 경로 작성 금지. prod·staging 절대 금지.",
+    "3. **ID/ARN/리소스 ID 하드코딩 금지**. 반드시 data source 사용 (network-topology.md 패턴 참조).",
+    "4. **회사 표준 모듈 우선**. resources/*.md, prompts/*.md에 기재된 모듈/네이밍/태깅 규칙 100% 준수.",
+    "5. **범위 밖 작업 거부**. 백엔드 코드/프론트엔드/문서/PR 코멘트 작성 등 요청 받으면 빈 files + 본문에 거부 사유 명시.",
+    "6. **추측 금지**. 사용자 메시지에 없는 리소스명/태그/사이즈는 회사 기본값(.md 참조)으로 채우거나 본문에 TODO로 표기.",
+    "7. **브랜치명에 timestamp/short hash 필수**. 형식: `agent/infra/<short-slug>-<unix_ts>` 또는 `agent/infra/<short-slug>-<8자해시>`.",
+    "8. **destroy/replace 가능성**: 기존 리소스 변경/삭제 가능성 있으면 PR body 최상단에 ⚠️ 경고 + 영향 범위 명시.",
+    "9. **terraform validate 통과 가능한 형식**. provider/variable/output 누락 없이.",
+    "",
+    "# 출력 형식 (이 외 문자 금지)",
+    "```",
     "{",
-    '  "files": { "environments/dev/<name>.tf": "<.tf 전체 내용>", ... },',
-    '  "branch": "agent/infra/<short-slug-with-timestamp>",',
-    '  "title": "<PR 제목>",',
-    '  "body": "<PR 본문, 변경 요약/체크리스트 포함>"',
+    '  "files": { "environments/dev/<name>.tf": "<.tf 전체 내용>", "...": "..." },',
+    '  "branch": "agent/infra/<short-slug>-<timestamp>",',
+    '  "title": "[dev/infra] <간결한 PR 제목>",',
+    '  "body": "## 요약\\n- ...\\n\\n## 변경 파일\\n- ...\\n\\n## 체크리스트\\n- [ ] terraform plan 확인\\n- [ ] 보안그룹 영향 검토\\n\\n## 영향/주의\\n- ..."',
     "}",
     "```",
     "",
-    "## 규칙",
-    "- 모든 ID/ARN은 하드코딩 금지, data source 사용 (network-topology.md 패턴 참조)",
-    "- dev 환경만 (prod 절대 금지)",
-    "- 브랜치명에 timestamp 또는 짧은 해시 포함 (동시 호출 시 충돌 방지)",
-    "- destroy 가능성 있으면 본문에 명시",
-    "- 답변은 위 JSON 한 덩어리. 백틱/마크다운 펜스 없이 raw JSON.",
+    "# 안티패턴 (절대 금지)",
+    "- ❌ `aws_xxx.example` 같은 placeholder 리소스명 — 의미 있는 이름 사용",
+    "- ❌ provider region 하드코딩 — variable 사용",
+    "- ❌ count/for_each 없이 환경별 분기 — 회사 패턴 따라 module 호출",
+    "- ❌ PR body에 'as requested', '아래와 같이 생성했습니다' 같은 의미 없는 문장",
+    "- ❌ JSON 앞뒤에 ```json 펜스, 설명 텍스트, 이모지",
+    "",
+    "# 회사 컨텍스트 (아래 섹션 모두 system prompt에 포함됨, 반드시 준수)",
     "",
   ];
 
@@ -97,45 +104,20 @@ async function createPrViaGithubMcp(plan, userToken = null) {
   return urlMatch ? urlMatch[0] : txt.slice(0, 300);
 }
 
-async function createPrViaLocalGit(plan) {
-  return await withTerraformRepo(async ({ tmpDir, owner, repo, token, baseBranch }) => {
-    await execAsync(`git checkout -b ${plan.branch}`, { cwd: tmpDir });
-    for (const [rel, content] of Object.entries(plan.files)) {
-      const safe = path.normalize(rel);
-      if (safe.startsWith("..") || path.isAbsolute(safe)) throw new Error(`Invalid path: ${rel}`);
-      const full = path.join(tmpDir, safe);
-      await fs.mkdir(path.dirname(full), { recursive: true });
-      await fs.writeFile(full, content, "utf8");
-    }
-    await execAsync(`git config user.email "infra-agent@rorr.club"`, { cwd: tmpDir });
-    await execAsync(`git config user.name "rorr-infra-agent"`, { cwd: tmpDir });
-    await execAsync("git add -A", { cwd: tmpDir });
-    await execAsync(`git commit -m "${plan.title.replace(/"/g, "'")}"`, { cwd: tmpDir });
-    await execAsync(`git push -u origin ${plan.branch}`, { cwd: tmpDir });
-
-    const r = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "application/vnd.github.v3+json" },
-      body: JSON.stringify({ title: plan.title, body: plan.body ?? "", head: plan.branch, base: baseBranch }),
-    });
-    const pr = await r.json();
-    if (!r.ok) throw new Error(`GitHub API: ${JSON.stringify(pr)}`);
-    return pr.html_url;
-  });
-}
-
 export function registerHandleInfraRequest(server) {
   server.tool(
     "handle_infra_request",
-    "자연어 인프라 요청을 받아 회사 규칙에 맞는 Terraform 코드 생성 + GitHub PR까지 자체 처리. LLM은 Claude OAuth(CLI), PR은 GitHub MCP 우선.",
+    "자연어 인프라 요청을 받아 회사 규칙에 맞는 Terraform 코드 생성 + GitHub MCP로 PR 생성. PR author = 로그인한 사용자.",
     {
       user_message: z.string().describe("자연어 인프라 요청. 예: 'dev에 S3 버킷 만들어줘'"),
-      user_token: z.string().optional().describe("사용자별 GitHub OAuth 토큰. 없으면 봇 토큰 사용."),
+      user_token: z.string().optional().describe("사용자별 GitHub OAuth 토큰. 일반적으로 Authorization 헤더에서 ALS로 자동 주입됨."),
     },
     async ({ user_message, user_token }) => {
       try {
-        // 우선순위: tool 인자 user_token > Authorization 헤더 (ALS) > 봇 토큰(폴백)
         user_token = user_token || getUserToken();
+        if (!user_token) {
+          return { content: [{ type: "text", text: "Error: 사용자 GitHub 토큰 없음. 오케스트레이터에 로그인 후 다시 시도하세요." }] };
+        }
 
         const system = await buildSystemPrompt();
         const plan = await callLLM(system, user_message);
@@ -147,28 +129,12 @@ export function registerHandleInfraRequest(server) {
           return { content: [{ type: "text", text: "Error: LLM이 branch/title 누락" }] };
         }
 
-        let url = null, via = null, errors = [];
-
-        if (DEFAULT_USE_GITHUB_MCP) {
-          try {
-            url = await createPrViaGithubMcp(plan, user_token);
-            via = user_token ? "github-mcp (user token)" : "github-mcp (bot token)";
-          } catch (e) {
-            errors.push(`github-mcp: ${e.message}`);
-          }
-        }
-
-        if (!url) {
-          url = await createPrViaLocalGit(plan);
-          via = "local-git (fallback)";
-        }
-
-        const errorsLine = errors.length ? `\n\n⚠️ 시도 중 발생:\n${errors.map(e => "- " + e).join("\n")}` : "";
+        const url = await createPrViaGithubMcp(plan, user_token);
 
         return {
           content: [{
             type: "text",
-            text: `✅ PR 생성됨 (${via}): ${url}\n\n## 변경 파일\n${Object.keys(plan.files).map(f => "- " + f).join("\n")}\n\n## 본문\n${plan.body ?? "(없음)"}${errorsLine}`,
+            text: `✅ PR 생성됨: ${url}\n\n## 변경 파일\n${Object.keys(plan.files).map(f => "- " + f).join("\n")}\n\n## 본문\n${plan.body ?? "(없음)"}`,
           }],
         };
       } catch (e) {

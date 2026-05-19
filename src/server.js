@@ -6,10 +6,8 @@ import path from "path";
 import crypto from "crypto";
 import { fileURLToPath } from "url";
 
-import { registerCreatePr } from "./tools/createPr.js";
 import { registerAwsDescribe } from "./tools/awsDescribe.js";
 import { registerHandleInfraRequest } from "./tools/handleInfraRequest.js";
-import { registerGithubProxy } from "./tools/githubProxy.js";
 import { requestStorage, extractBearer } from "./requestContext.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -40,11 +38,8 @@ function createServer() {
   }
 
   // Tools
-  registerCreatePr(server);
   registerAwsDescribe(server);
   registerHandleInfraRequest(server);
-  // GitHub MCP의 tool들을 gh_* 로 proxy (비동기 — 부팅 시 한 번)
-  registerGithubProxy(server).catch((e) => console.error("[github-proxy] failed:", e.message));
 
   return server;
 }

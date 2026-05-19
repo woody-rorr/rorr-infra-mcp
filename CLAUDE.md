@@ -71,7 +71,7 @@ aws ecs update-service \
 | `AWS_REGION` | `us-east-1` |
 | `BASE_BRANCH` | `main` |
 | `TERRAFORM_GITHUB_REPO_URL` | `rorr-infra-terraform` 레포 URL |
-| `GITHUB_TOKEN` | GitHub PAT (PR 생성용) |
+| `TERRAFORM_GITHUB_REPO_URL` | PR 대상 repo URL (SSM `/rorr-mcp-infra/github-repo-url`에서 entrypoint가 주입) |
 
 ## MCP 접속 URL
 

@@ -12,9 +12,7 @@
 | Tool | 용도 |
 |---|---|
 | `handle_infra_request` | 자연어 → .tf 생성 + PR (메인 진입점) |
-| `create_pr` | 파일 내용 직접 받아 PR 생성 (raw, 폴백) |
 | `aws_describe_*` (10개) | SG/ECS/ALB/VPC/Subnet/Listener/TargetHealth/Logs 등 read-only |
-| `gh_*` (50+) | GitHub MCP의 모든 tool을 재노출 (PR 머지/조회/Actions 로그 등) |
 
 ## 외부 의존
 
@@ -30,8 +28,6 @@
     "github": {
       "type": "http",
       "url": "https://api.githubcopilot.com/mcp/",
-      "tokenEnv": "GITHUB_MCP_TOKEN",
-      "proxyPrefix": "gh_"
     }
   }
 }
@@ -39,15 +35,15 @@
 
 ## 인증
 
-### LLM (현재: Bedrock)
-- ECS Task Role 자동 (IAM 정책에 Bedrock InvokeModel 권한)
-- 코드 1줄: `new BedrockRuntimeClient({ region })`
-- 향후 전환 예정: **Claude Code + SSM OAuth 토큰** (메모리 기록됨)
+### LLM (Claude Code CLI, OAuth)
+- SSM `/rorr-mcp-infra/claude-credentials` (SecureString) → `entrypoint.sh`가 `~/.claude/.credentials.json`에 주입
+- 코드는 `claude -p ...` 자식 프로세스 호출 (Bedrock/Anthropic API 미사용)
+- 토큰 만료 시: 로컬에서 `claude` 한 번 실행 → macOS Keychain → SSM put-parameter → ECS force-new-deployment
 
-### GitHub (현재: 봇 PAT)
-- SSM `/rorr-mcp-infra/github-token` → entrypoint.sh가 `GITHUB_TOKEN` / `GITHUB_MCP_TOKEN`으로 export
-- 향후: **사용자별 GitHub OAuth 토큰**을 오케스트레이터에서 `user_token` 인자로 전달
-- 그러면 PR 작성자가 실제 사람 이름으로 찍힘
+### GitHub (사용자별 OAuth)
+- 오케스트레이터의 GitHub OAuth 로그인으로 발급된 사용자 토큰을 `Authorization: Bearer <token>` 헤더로 받음
+- `requestContext.js`의 AsyncLocalStorage가 tool 핸들러까지 전파
+- github MCP 호출 시 사용자 토큰 그대로 사용 → **PR 작성자가 실제 로그인 사용자로 찍힘** (봇 PAT 미사용)
 
 ## PR 생성 경로
 
@@ -79,7 +75,7 @@
 | ECR | `rorr-mcp-infra` |
 | ECS Cluster | `mcp-agents-staging-cluster` (공유) |
 | ECS Service | `rorr-mcp-infra-service` |
-| Task Role | `rorr-mcp-infra-task` (Bedrock+SSM 권한) |
+| Task Role | `rorr-mcp-infra-task` (SSM GetParameter — Claude OAuth credentials) |
 | ALB 포트 | `5010` |
 | 외부 URL | `http://mcp-agents-staging-alb-249976027.us-east-1.elb.amazonaws.com:5010/mcp` |
 
@@ -99,9 +95,10 @@ curl -X POST http://orchestrator-host:4000/chat \
 
 `main`에 푸시하면 GitHub Actions가 ECR 빌드/푸시 → ECS force-new-deployment.
 
-## 향후 로드맵 (저장된 결정사항)
+## 향후 로드맵
 
-1. LLM을 Bedrock → **Claude Code + SSM OAuth 토큰**으로 전환 (시기 미정)
-2. 사용자 인증: **GitHub OAuth SSO** 도입 → `user_token`을 오케스트레이터에서 전파
-3. 다른 도메인 MCP (frontend/backend)에 같은 패턴 복제 (`handle_*_request` + `.mcp.json` outbound)
+1. ✅ LLM: Claude Code CLI + SSM OAuth 토큰 (완료)
+2. ✅ 사용자 인증: GitHub OAuth SSO + 토큰 전파 (완료, 봇 PAT 제거)
+3. 다른 도메인 MCP (frontend/backend)에 같은 패턴 복제 (`handle_*_request` + `clients/githubMcp.js`로 자기 repo PR)
 4. HTTPS + 도메인 (`chat.rorr.club`) → claude.ai Connectors 호환
+5. PR 결과 스트리밍 (단계별 진행 표시)

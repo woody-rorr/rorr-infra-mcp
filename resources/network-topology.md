@@ -86,7 +86,7 @@ data "aws_ecs_cluster" "x" {
 
 1. CloudWatch Log Group 생성
 2. IAM Execution Role + AmazonECSTaskExecutionRolePolicy attach
-3. IAM Task Role (도메인별 권한, 예: Bedrock invoke)
+3. IAM Task Role (도메인별 권한, 예: SSM GetParameter, S3 read, etc.)
 4. ECS Task Definition (Fargate, awsvpc)
 5. ALB Target Group (target_type=ip, vpc_id 명시, health check path)
 6. ALB Listener (위 data.aws_lb.shared.arn 사용)

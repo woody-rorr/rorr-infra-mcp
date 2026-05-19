@@ -1,11 +1,9 @@
 {
-  "comment": "이 infra MCP 서버가 클라이언트로서 접속할 외부 MCP들. Claude Desktop/Code의 .mcp.json과 동일 컨벤션. 토큰은 환경변수에서 런타임 주입.",
+  "comment": "이 infra MCP 서버가 outbound로 접속할 외부 MCP. 토큰은 매 요청마다 사용자 OAuth로 전달 (봇 토큰 미사용).",
   "mcpServers": {
     "github": {
       "type": "http",
-      "url": "https://api.githubcopilot.com/mcp/",
-      "tokenEnv": "GITHUB_MCP_TOKEN",
-      "proxyPrefix": "gh_"
+      "url": "https://api.githubcopilot.com/mcp/"
     }
   }
 }

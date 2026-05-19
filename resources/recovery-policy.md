@@ -34,9 +34,9 @@
 
 ## 인증 만료
 - 증상:
-  - GitHub `401 Unauthorized` → `GITHUB_TOKEN` 갱신 (SSM `/rorr-mcp-infra/github-token`)
+  - GitHub `401 Unauthorized` → 사용자가 오케스트레이터에 재로그인 (개인 OAuth 토큰 만료/회수)
   - AWS `ExpiredToken` → IAM Role/credentials 확인
-  - Claude CLI `401` → ECS Exec 접속 후 `claude /login` + `ecs-backup-auth.sh`
+  - Claude CLI `401` → SSM `/rorr-mcp-infra/claude-credentials` 갱신 (로컬 `claude` 실행 → Keychain → SSM put-parameter → ECS 재배포)
 - 자동 갱신 X, 사용자에게 통보
 
 ## 예방 원칙
